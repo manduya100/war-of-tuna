@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🐟 War Of Tuna (참치 전쟁)</title>
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Jua&family=Noto+Sans+KR:wght@400;600;700;800;900&family=Outfit:wght@600;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css?v=17">
+    <!-- Local Socket.io (실패 없이 항상 로드됨) -->
+    <script src="/static/js/socket.io.min.js"></script>
+    <script>
+        // 만약 로컬 로드 실패 시 CDN 백업
+        if (typeof io === 'undefined') {
+            document.write('<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"><\/script>');
+        }
+    </script>
+</head>
+<body>
+    <!-- 바다 배경 레이어 (메인 / 대기실 분리) -->
+    <div id="bg-main" class="bg-layer active"></div>
+    <div id="bg-room" class="bg-layer"></div>
+    <div class="bg-overlay"></div>
+
+    <!-- 토스트 알림 컨테이너 -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- ==================== 1. 메인 화면 ==================== -->
+    <section id="screen-main" class="screen-view active">
+        <!-- 좌측 상단: 닉네임 설정 -->
+        <header class="top-bar">
+            <div class="profile-widget" id="profile-widget">
+                <div class="avatar-box" id="avatar-btn" title="아바타 변경">
+                    <span id="my-avatar" class="avatar-emoji">🐟</span>
+                </div>
+                <div class="name-box">
+                    <span class="label">내 닉네임 설정</span>
+                    <div class="input-wrap">
+                        <input type="text" id="nickname-input" maxlength="12" placeholder="닉네임을 입력하세요" value="">
+                        <button id="save-name-btn" class="icon-btn" title="저장">✓</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="top-controls">
+                <div id="server-status-pill" class="status-pill connected">● 연결됨</div>
+                <button id="sound-toggle-btn" class="sound-btn" title="효과음 토글">🔊 소리 켜짐</button>
+            </div>
+        </header>
+
+        <!-- 메인 중앙: 방 만들기 & 방 찾기 -->
+        <main class="main-center-container">
+            <div class="game-logo-area">
+                <div class="sub-badge">REAL-TIME MULTIPLAYER</div>
+                <h1 class="game-title">
+                    <span class="title-war">WAR OF</span>
+                    <span class="title-tuna">TUNA</span>
+                </h1>
+                <p class="game-desc">푸른 바다 속에서 펼쳐지는 실시간 참치들의 대결</p>
+            </div>
+
+            <div class="action-cards-grid">
+                <!-- 방 만들기 카드 -->
+                <div class="action-card create-card">
+                    <div class="card-icon-badge">⚓</div>
+                    <h2>방 만들기</h2>
+                    <p class="card-text">새로운 방을 만들고 10자리 숫자 코드로 대기실에 입장합니다.</p>
+                    <button id="create-room-btn" class="btn btn-create">
+                        <span class="btn-icon">⚡</span>
+                        <span class="btn-text">방 만들기 (랜덤 10자리)</span>
+                    </button>
+                </div>
+
+                <!-- 방 찾기 카드 -->
+                <div class="action-card join-card">
+                    <div class="card-icon-badge">🔍</div>
+                    <h2>방 찾기</h2>
+                    <p class="card-text">10자리 숫자 코드를 입력하여 친구의 방으로 입장합니다.</p>
+                    <div class="join-input-group">
+                        <div class="code-input-container">
+                            <input type="text" id="join-code-input" maxlength="10" placeholder="10자리 숫자 코드 입력" autocomplete="off">
+                            <span class="code-counter" id="code-counter">0/10</span>
+                        </div>
+                        <button id="join-room-btn" class="btn btn-join">
+                            <span class="btn-text">입장하기</span>
+                            <span class="btn-icon">➔</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <footer class="main-footer">
+            <p>© 2026 War Of Tuna · 온라인 실시간 로비</p>
+        </footer>
+    </section>
+
+    <!-- ==================== 2. 대기실 화면 ==================== -->
+    <section id="screen-room" class="screen-view">
+        <!-- 대기실 상단 헤더 -->
+        <header class="room-header">
+            <div class="room-header-left">
+                <button id="leave-room-btn" class="btn btn-outline btn-leave">
+                    <span>←</span> 나가기
+                </button>
+            </div>
+
+            <!-- 가운데 10자리 방 코드 표시 -->
+            <div class="room-code-display-wrap">
+                <div class="code-label">대기실 코드 (10자리)</div>
+                <div class="code-box" id="copy-code-btn" title="클릭하여 복사">
+                    <span id="display-room-code" class="display-code">0000000000</span>
+                    <span class="copy-tag">📋 복사</span>
+                </div>
+            </div>
+
+            <!-- 우측 인원수 표시 및 방장 플레이 버튼 -->
+            <div class="room-header-right">
+                <button id="quick-start-game-btn" class="btn btn-play-quick hidden" title="게임 시작">🎮 게임 시작</button>
+                <div class="player-count-badge">
+                    <span class="icon">👥</span>
+                    <span id="player-count-text">1 / 8명</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- 방장 전용 컨트롤 패널 -->
+        <div id="host-banner" class="host-banner hidden">
+            <div class="host-banner-content">
+                <div class="host-title">
+                    <span class="crown">👑</span>
+                    <strong>방장 제어실</strong>
+                </div>
+                <div class="host-controls-group">
+                    <div class="control-item">
+                        <label for="max-players-select">플레이 인원 설정:</label>
+                        <select id="max-players-select" class="select-box">
+                            <option value="2">2명</option>
+                            <option value="3">3명</option>
+                            <option value="4">4명</option>
+                            <option value="5">5명</option>
+                            <option value="6">6명</option>
+                            <option value="7">7명</option>
+                            <option value="8" selected>8명</option>
+                        </select>
+                    </div>
+                    <div class="host-tip">
+                        💡 이름 우측의 [강퇴] 버튼으로 내보낼 수 있습니다.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 메인 대기실 본문: 사진 속 알약/캡슐 슬롯 형태의 플레이어 리스트 -->
+        <main class="room-pill-layout">
+            <div class="pill-list-card">
+                <div class="pill-list-header">
+                    <span id="all-ready-indicator" class="pill-status-text">플레이어 대기실</span>
+                </div>
+
+                <!-- 사진과 완벽히 일치하는 둥근 캡슐형 플레이어 슬롯 컨테이너 -->
+                <div id="capsule-slots-container" class="capsule-slots-container">
+                    <!-- 자바스크립트로 캡슐 슬롯들이 세로로 렌더링됩니다 -->
+                </div>
+            </div>
+
+            <!-- 대기실 채팅 & 활동 로그 -->
+            <aside class="room-mini-chat">
+                <div class="chat-header">
+                    <h4>💬 대기실 대화</h4>
+                </div>
+                <div id="chat-messages" class="chat-messages">
+                    <div class="chat-item system">
+                        🌊 대기실에 오신 것을 환영합니다!
+                    </div>
+                </div>
+                <div class="chat-input-row">
+                    <input type="text" id="chat-input" maxlength="60" placeholder="메시지 입력...">
+                    <button id="chat-send-btn" class="chat-btn">전송</button>
+                </div>
+            </aside>
+        </main>
+
+        <!-- 대기실 하단 액션 버튼 바 -->
+        <footer class="room-bottom-bar">
+            <div class="bottom-bar-inner">
+                <!-- 일반 준비완료 버튼 -->
+                <button id="toggle-ready-btn" class="btn btn-ready-toggle unready">
+                    <span class="ready-icon">⏳</span>
+                    <span class="ready-text">준비완료 하기</span>
+                </button>
+
+                <!-- 방장 전용 플레이(게임 시작) 버튼 -->
+                <button id="start-game-btn" class="btn btn-play hidden">
+                    <span class="play-icon">▶</span>
+                    <span class="play-text">플레이 (게임 시작)</span>
+                </button>
+            </div>
+        </footer>
+    </section>
+
+    <!-- ==================== 3. 2D 대형 바다 전장 (Starcraft Style 9-Square Zones) ==================== -->
+    <section id="screen-game" class="screen-view">
+        <header class="game-map-header">
+            <div class="game-header-left">
+                <button id="back-to-lobby-btn" class="btn btn-outline btn-leave">
+                    <span>←</span> 대기실로 복귀
+                </button>
+            </div>
+            <div class="game-header-center">
+                <h2 class="game-map-title">🐟 WAR OF TUNA - 2D 바다 전장</h2>
+                <span class="room-code-tag">ROOM #<span id="game-stage-room-code">0000000000</span></span>
+            </div>
+            <div class="game-header-right">
+                <div class="current-zone-badge">
+                    <span class="icon">📍</span>
+                    <span>현재 위치: <strong id="current-zone-name">구역 5 (가운데) [5-5]</strong></span>
+                </div>
+            </div>
+        </header>
+
+        <!-- 완벽한 정사각형 게임 화면 컨테이너 -->
+        <main class="square-game-wrapper">
+            <div class="square-canvas-box" id="square-canvas-box">
+                <!-- 2D 캔버스 (정사각형 게임 뷰포트) -->
+                <canvas id="game-canvas" width="720" height="720"></canvas>
+
+                <!-- 스타크래프트 스타일 실시간 3x3 미니맵 HUD -->
+                <div class="starcraft-minimap-panel" id="minimap-panel">
+                    <div class="minimap-title">MINIMAP (3x3 구역 · 9x9 칸)</div>
+                    <canvas id="minimap-canvas" width="135" height="135"></canvas>
+                    <div class="minimap-coords" id="minimap-coords">구역 5 [5-5]</div>
+                </div>
+            </div>
+        </main>
+    </section>
+
+    <!-- 아바타 선택 모달 -->
+    <div id="avatar-modal" class="modal-overlay hidden">
+        <div class="modal-box">
+            <h3>해양 아바타 선택</h3>
+            <p>프로필 아이콘을 골라보세요!</p>
+            <div class="avatar-grid" id="avatar-grid"></div>
+            <button id="close-avatar-modal" class="btn btn-outline">닫기</button>
+        </div>
+    </div>
+
+    <!-- 세련된 커스텀 확인/경고 팝업 다이얼로그 모달 -->
+    <div id="custom-dialog-modal" class="modal-overlay hidden">
+        <div class="custom-dialog-box">
+            <div class="dialog-icon-circle" id="dialog-icon">🚪</div>
+            <h3 id="dialog-title">대기실 나가기</h3>
+            <p id="dialog-desc">정말 대기실에서 퇴장하시겠습니까?</p>
+            <div id="dialog-sub" class="dialog-sub-text">메인 화면으로 이동합니다.</div>
+            <div class="dialog-btn-group">
+                <button id="dialog-cancel-btn" class="btn btn-dialog-cancel">취소</button>
+                <button id="dialog-confirm-btn" class="btn btn-dialog-confirm">나가기</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/game_canvas.js?v=17"></script>
+    <script src="/static/js/main.js?v=17"></script>
+</body>
+</html>
